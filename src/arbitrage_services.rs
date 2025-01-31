@@ -117,7 +117,7 @@ pub async fn execute_arbitrage(
     let gas_estimate = provider.estimate_gas(&tx, None).await?;
     let tx = tx.set_gas(gas_estimate);
 
-    let signed_tx = wallet.sign_transaction(&tx).await?;
+    let signed_tx = wallet.sign_transaction(tx).await?;
     let raw_tx = tx.rlp_signed(&signed_tx);
 
     provider.send_raw_transaction(raw_tx).await?;
@@ -155,9 +155,7 @@ pub async fn monitor_mempool(
         let provider = provider.clone();
         let contract = contract.clone();
         let wallet = wallet.clone();
-        let target_token_in = target_token_in;
-        let target_token_out = target_token_out;
-
+        
         tokio::spawn(async move {
             if let Ok(Some(tx)) = provider.get_transaction(tx_hash).await {
                 if is_target_pair(&tx, target_token_in, target_token_out).await {
