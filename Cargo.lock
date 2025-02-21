@@ -127,6 +127,7 @@ dependencies = [
  "clap",
  "ethers",
  "futures-util",
+ "lazy_static",
  "serde",
  "serde_json",
  "tokio",

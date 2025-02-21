@@ -2,6 +2,7 @@
 
 mod arbitrage_services;
 mod constants;
+mod utils;
 
 use ethers::{
     types::H160,
@@ -13,7 +14,7 @@ use ethers::{
 
 use std::sync::Arc;
 
-use constants::{CONTRACT_ADDRESS, WETH_ADDRESS};
+use constants::{CONTRACT_ADDRESS, DAI_ADDRESS, QUICKNODE_WS_URL, WETH_ADDRESS};
 use arbitrage_services::{load_contract_abi, monitor_mempool};
 use clap::Parser;
 
@@ -23,10 +24,7 @@ struct Cli {
     #[clap(short = 'p', long)]
     private_key: String,
 
-    #[clap(short = 'r', long)]
-    rpc_url: String,
-
-    #[clap(short = 't', long)]
+    #[clap(short = 't', long, default_value = DAI_ADDRESS)]
     token_out: H160,
 }
 
@@ -35,11 +33,12 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
 
-    let provider = Arc::new(Provider::<Ws>::connect(cli.rpc_url)
+    let provider = Provider::<Ws>::connect(QUICKNODE_WS_URL)
         .await
-        .expect("Failed to connect to WebSocket provider"));
+        .expect("Failed to connect to WebSocket provider");
+    let provider = Arc::new(provider);
 
-    let abi = load_contract_abi().await.expect("Failed to load contract ABI");
+    let abi = load_contract_abi().expect("Failed to load contract ABI");
     let contract_address = CONTRACT_ADDRESS.parse::<H160>()
         .expect("Invalid contract address");
 
@@ -58,12 +57,6 @@ async fn main() {
         target_token_out
     ).await;
 
-
-    
-        
-       
-
-    
 
 }
     
