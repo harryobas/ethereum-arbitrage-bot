@@ -18,20 +18,9 @@ use constants::{CONTRACT_ADDRESS, DAI_ADDRESS, QUICKNODE_WS_URL, WETH_ADDRESS};
 use arbitrage_services::{load_contract_abi, monitor_mempool};
 use clap::Parser;
 
-#[derive(Parser)]
-#[clap(version, author, about)]
-struct Cli {
-    #[clap(short = 'p', long)]
-    private_key: String,
-
-    #[clap(short = 't', long, default_value = DAI_ADDRESS)]
-    token_out: H160,
-}
-
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
 
     let provider = Provider::<Ws>::connect(QUICKNODE_WS_URL)
         .await
@@ -46,8 +35,8 @@ async fn main() {
 
     let wallet = Arc::new(cli.private_key.parse::<LocalWallet>().expect("Invalid private key"));
 
-    let target_token_in = WETH_ADDRESS.parse::<H160>().expect("Faild to parse token address");
-    let target_token_out = cli.token_out;
+    let target_token_in = DAI_ADDRESS.parse::<H160>().expect("Faild to parse token address");
+    let target_token_out = WETH_ADDRESS.parse::<H160>().expect("Faild to parse token address");
 
     monitor_mempool(
         provider.clone(),

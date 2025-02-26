@@ -11,6 +11,7 @@ use anyhow::{Result, anyhow};
 use std::sync::Arc;
 use lazy_static::lazy_static;
 
+
 abigen!(IERC20, "./IERC20.json");
 
 
@@ -63,10 +64,17 @@ pub async fn is_target_pair(tx: &Transaction, target_token_in: H160, target_toke
     let decoded_tx = decode_transaction(tx).await;
     match decoded_tx {
         Ok((token_in, token_out, _)) => {
-            (token_in == target_token_in && token_out == target_token_out)
-                || (token_in == target_token_out && token_out == target_token_in)
+            let is_match = (token_in == target_token_in && token_out == target_token_out)
+                || (token_in == target_token_out && token_out == target_token_in);
+            if !is_match {
+                log::info!("Transaction does not involve the target token pair: {:?}", tx.hash);
+            }
+            is_match
         }
-        Err(_) => false,
+        Err(e) => {
+            log::info!("Failed to decode transaction: {:?}", e);
+            false
+        }
     }
 }
 pub async fn decode_transaction(tx: &Transaction) -> Result<(H160, H160, U256)> {
@@ -78,22 +86,29 @@ pub async fn decode_transaction(tx: &Transaction) -> Result<(H160, H160, U256)> 
         .decode_input(&tx.input)
         .map_err(|e| anyhow!("Failed to decode transaction: {:?}", e))?;
 
-    let token_in = decoded[0]
-        .clone()
-        .into_address()
-        .ok_or(anyhow!("Error decoding token_in"))?;
-    let token_out = decoded[1]
-        .clone()
-        .into_address()
-        .ok_or(anyhow!("Error decoding token_out"))?;
-    let amount_in = decoded[2]
+    // Extract amountIn (U256)
+    let amount_in = decoded[0]
         .clone()
         .into_uint()
         .ok_or(anyhow!("Error decoding amount_in"))?;
 
+    // Extract path (Vec<H160>)
+    let path = decoded[2]
+        .clone()
+        .into_array()
+        .ok_or(anyhow!("Error decoding path"))?;
+
+    // Extract token_in and token_out from the path
+    let token_in = path[0]
+        .clone()
+        .into_address()
+        .ok_or(anyhow!("Error decoding token_in"))?;
+    let token_out = path[1]
+        .clone()
+        .into_address()
+        .ok_or(anyhow!("Error decoding token_out"))?;
+
     Ok((token_in, token_out, amount_in))
 }
 
-pub fn calculate_minout(expected: U256, slippage_bps: U256) -> U256 {
-    expected * (U256::from(10_000) - slippage_bps) / U256::from(10_000)
-}
+

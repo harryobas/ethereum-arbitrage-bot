@@ -3,15 +3,15 @@ use ethers::{
     contract:: Contract,
     providers::{Middleware, Provider, Ws},
     signers::{LocalWallet, Signer},
-    types::{Transaction, H160, U256},
+    types::{H160, U256},
 };
 use std::sync::Arc;
 use chrono::Utc;
 use anyhow::{Result, anyhow};
 use futures_util::stream::StreamExt;
-use log::{info, warn, error};
+use log::{info, error};
 
-use crate::constants::{SUSHISWAP_FACTORY_ADDRESS, UNISWAP_ROUTER, UNISWAP_V2_FACTORY_ADDRESS};
+use crate::constants::{SUSHISWAP_FACTORY_ADDRESS, UNISWAP_V2_FACTORY_ADDRESS};
 use crate::utils::*;
 
 pub enum TradeDirections {
@@ -19,10 +19,6 @@ pub enum TradeDirections {
     SUSHISWAP,
 }
 
-pub enum TransactionType {
-    UniswapTrade,
-    SushiswapTrade,
-}
 
 pub fn load_contract_abi() -> Result<Abi> {
     Ok(CONTRACT_ABI.clone())
@@ -72,7 +68,7 @@ fn simulate_trade_profit(
     Ok(amount_out)
 }
 
-pub async fn execute_arbitrage(
+async fn execute_arbitrage(
     provider: Arc<Provider<Ws>>,
     contract: Arc<Contract<Provider<Ws>>>,
     wallet: Arc<LocalWallet>,
@@ -81,65 +77,14 @@ pub async fn execute_arbitrage(
     amount_in: U256,
     direction: TradeDirections,
 ) -> Result<()> {
-    let transaction_type = match direction {
-        TradeDirections::UNISWAP => TransactionType::UniswapTrade,
-        TradeDirections::SUSHISWAP => TransactionType::SushiswapTrade,
-    };
-
-    execute_transaction(
-        provider,
-        transaction_type,
-        contract,
-        wallet,
-        token_in,
-        token_out,
-        amount_in
-    )
-    .await
-}
-
-async fn execute_transaction(
-    provider: Arc<Provider<Ws>>,
-    transaction_type: TransactionType,
-    contract: Arc<Contract<Provider<Ws>>>,
-    wallet: Arc<LocalWallet>,
-    token_in: H160,
-    token_out: H160,
-    amount_in: U256,
-) -> Result<()> {
+    let method_name = "startArbitrage";
     let gas_price = provider.get_gas_price().await?;
     let deadline = U256::from(Utc::now().timestamp() + 300);
-    let slippage_bps = U256::from(100);  // 1% slippage
-
-    let method_name = match transaction_type {
-        TransactionType::UniswapTrade => "executeUniswapTrade",
-        TransactionType::SushiswapTrade => "executeSushiswapTrade",
-    };
-
-    let path: [H160; 2] = [token_in, token_out];
-    let router_address = UNISWAP_ROUTER.parse::<H160>()?;
-    let router_abi: Abi = load_router_abi()?;
-
-    let uniswap_router = Contract::new(
-        router_address,
-        router_abi,
-          provider.clone()
-        );
-
-    let expected_out =  uniswap_router
-        .method::<_, Vec<U256>>("getAmountsOut", (amount_in, path))?
-        .call()
-        .await
-        .map_err(|e| anyhow!("Failed to get amount: {}", e))?;
-
-    let expected_out = expected_out[1];
-    let min_out = calculate_minout(expected_out, slippage_bps);
-
-
+    
     let mut tx = contract
         .method::<_, ()>(
             method_name,
-            (token_in, token_out, amount_in, min_out, deadline),
+            (token_in, amount_in, token_out, deadline, matches!(direction, TradeDirections::UNISWAP)),
         )?
         .gas_price(gas_price)
         .from(wallet.address())
@@ -184,81 +129,35 @@ pub async fn monitor_mempool(
             if let Ok(Some(tx)) = provider.get_transaction(tx_hash).await {
                 if is_target_pair(&tx, target_token_in, target_token_out).await {
                     if let Ok((token_in, token_out, amount_in)) = decode_transaction(&tx).await {
-                        match check_price_discrepancy(
-                            provider.clone(),
-                            token_in,
-                            token_out,
-                            amount_in,
-                            contract.clone(),
-                        )
-                        .await
-                        {
-                            Ok(Some((use_sushiswap, profit))) => {
-                                let contract_balance = check_contract_balance(
-                                    provider.clone(),
-                                    contract.address(),
-                                    token_in,
-                                )
-                                .await
-                                .unwrap_or(U256::zero());
+                        if let Ok(Some((use_sushiswap, profit))) = check_price_discrepancy(provider.clone(), token_in, token_out, amount_in).await {
+                            let direction = if use_sushiswap {
+                                TradeDirections::SUSHISWAP
+                            } else {
+                                TradeDirections::UNISWAP
+                            };
 
-                                if contract_balance >= amount_in {
-                                    let direction = if use_sushiswap {
-                                        TradeDirections::SUSHISWAP
-                                    } else {
-                                        TradeDirections::UNISWAP
-                                    };
-
-                                    if let Err(e) = execute_arbitrage(
-                                        provider.clone(),
-                                        contract.clone(),
-                                        wallet.clone(),
-                                        token_in,
-                                        token_out,
-                                        amount_in,
-                                        direction,
-                                    )
-                                    .await
-                                    {
-                                        error!("⚠️ Failed to execute arbitrage: {:?}", e);
-                                    } else {
-                                        info!(
-                                            "✅ Arbitrage executed: {} -> {} (amount: {}, profit: {})",
-                                            token_in, token_out, amount_in, profit
-                                        );
-                                    }
-                                } else {
-                                    warn!(
-                                        "⚠️ Insufficient balance for arbitrage: {} -> {} (amount: {})",
-                                        token_in, token_out, amount_in
-                                    );
-                                }
-                            }
-                            Ok(None) => {
+                            if let Err(e) = execute_arbitrage(provider.clone(), contract.clone(), wallet.clone(), token_in, token_out, amount_in, direction).await {
+                                error!("⚠️ Failed to execute arbitrage: {:?}", e);
+                            } else {
                                 info!(
-                                    "🔍 No arbitrage opportunity found: {} -> {} (amount: {})",
-                                    token_in, token_out, amount_in
+                                    "✅ Arbitrage executed: {} -> {} (amount: {}, profit: {})",
+                                    token_in, token_out, amount_in, profit
                                 );
-                            }
-                            Err(e) => {
-                                error!("❌ Error checking price discrepancy: {:?}", e);
                             }
                         }
                     }
                 }
-            } else {
-                warn!("⚠️ Failed to get transaction: {:?}", tx_hash);
             }
         });
     }
 }
 
+
 pub async fn check_price_discrepancy(
     provider: Arc<Provider<Ws>>,
     token_in: H160,
     token_out: H160,
-    amount_in: U256,
-    contract: Arc<Contract<Provider<Ws>>>,
+    amount_in: U256
 ) -> Result<Option<(bool, U256)>> {
     let fee_uniswap = U256::from(997); // 0.3% fee
     let fee_sushiswap = U256::from(998); // 0.25% fee
@@ -279,22 +178,8 @@ pub async fn check_price_discrepancy(
         return Ok(None);
     };
 
-    let method_name = if use_sushiswap {
-        "executeSushiswapTrade"
-    } else {
-        "executeUniswapTrade"
-    };
-
-    let tx = contract.method::<_, ()>(
-        method_name,
-        (token_in, token_out, amount_in, 3000, U256::one(), U256::from(Utc::now().timestamp() + 300)),
-    )?;
-
-    let gas_cost = gas_estimate(&tx.tx, provider).await?;
-    let net_profit = profit - gas_cost;
-
-    if net_profit > U256::exp10(15) {
-        Ok(Some((use_sushiswap, net_profit)))
+    if profit > U256::exp10(15) {
+        Ok(Some((use_sushiswap, profit)))
     } else {
         Ok(None)
     }
