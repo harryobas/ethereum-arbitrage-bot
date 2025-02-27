@@ -43,7 +43,7 @@ pub async fn get_pool_address(
     Ok(pair_address)
 }
 
-pub async fn gas_estimate(tx: &TypedTransaction, provider: Arc<Provider<Ws>>) -> Result<U256> {
+pub async fn get_gas_estimate(tx: &TypedTransaction, provider: Arc<Provider<Ws>>) -> Result<U256> {
     provider
         .estimate_gas(tx, None)
         .await

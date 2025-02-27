@@ -90,16 +90,27 @@ async fn execute_arbitrage(
         .from(wallet.address())
         .tx;
 
-    let gas_estimate = gas_estimate(&tx, provider.clone()).await?;
+    let gas_estimate = get_gas_estimate(&tx, provider.clone()).await?;
     let tx = tx.set_gas(gas_estimate);
 
     let signed_tx = wallet.sign_transaction(tx).await?;
     let raw_tx = tx.rlp_signed(&signed_tx);
 
-    provider
+    let pending_tx = provider
         .send_raw_transaction(raw_tx)
         .await
         .map_err(|e| anyhow!("Failed to send transaction: {:?}", e))?;
+
+    let receipt = pending_tx.await?;
+    match receipt {
+        Some(receipt) => {
+            info!("�� Transaction mined: {:?}", receipt.transaction_hash);
+        }
+        None => {
+            error!("�� Failed to mine transaction");
+        }
+    }
+        
 
     Ok(())
 }
