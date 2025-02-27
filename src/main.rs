@@ -27,11 +27,15 @@ async fn main() {
         .expect("Failed to connect to WebSocket provider");
     let provider = Arc::new(provider);
 
-    let abi = load_contract_abi().expect("Failed to load contract ABI");
+    let contract_abi = load_contract_abi().expect("Failed to load contract ABI");
     let contract_address = CONTRACT_ADDRESS.parse::<H160>()
         .expect("Invalid contract address");
 
-    let contract = Arc::new(Contract::new(contract_address, abi, provider.clone()));
+    let contract = Arc::new(Contract::new(
+        contract_address, 
+        contract_abi, 
+        provider.clone()
+    ));
 
     let wallet = Arc::new(cli.private_key.parse::<LocalWallet>().expect("Invalid private key"));
 

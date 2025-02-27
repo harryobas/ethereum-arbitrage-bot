@@ -57,16 +57,45 @@ pub async fn simulate_transaction(
     Ok((reserve_in, reserve_out))
 }
 
-fn simulate_trade_profit(
+pub fn simulate_trade_profit(
     reserve_in: U256,
     reserve_out: U256,
     amount_in: U256,
     fee_rate: U256,
 ) -> Result<U256> {
-    let amount_in_with_fee = amount_in * fee_rate / U256::from(1000);
-    let amount_out = (amount_in_with_fee * reserve_out) / (reserve_in + amount_in_with_fee);
+    // Validate inputs
+    if reserve_in.is_zero() || reserve_out.is_zero() {
+        return Err(anyhow!("Reserves cannot be zero"));
+    }
+    if amount_in.is_zero() {
+        return Err(anyhow!("Input amount cannot be zero"));
+    }
+    if fee_rate > U256::from(1000) || fee_rate.is_zero() {
+        return Err(anyhow!("Invalid fee rate"));
+    }
+
+    // Calculate the input amount after fees
+    let amount_in_with_fee = amount_in
+        .checked_mul(fee_rate)
+        .ok_or(anyhow!("Overflow in fee calculation"))?
+        .checked_div(U256::from(1000))
+        .ok_or(anyhow!("Division by zero in fee calculation"))?;
+
+    // Calculate the output amount
+    let numerator = amount_in_with_fee
+        .checked_mul(reserve_out)
+        .ok_or(anyhow!("Overflow in numerator calculation"))?;
+    let denominator = reserve_in
+        .checked_add(amount_in_with_fee)
+        .ok_or(anyhow!("Overflow in denominator calculation"))?;
+
+    let amount_out = numerator
+        .checked_div(denominator)
+        .ok_or(anyhow!("Division by zero in output calculation"))?;
+
     Ok(amount_out)
 }
+
 
 async fn execute_arbitrage(
     provider: Arc<Provider<Ws>>,
@@ -104,10 +133,10 @@ async fn execute_arbitrage(
     let receipt = pending_tx.await?;
     match receipt {
         Some(receipt) => {
-            info!("�� Transaction mined: {:?}", receipt.transaction_hash);
+            info!("✅  Transaction mined: {:?}", receipt.transaction_hash);
         }
         None => {
-            error!("�� Failed to mine transaction");
+            error!("❌ Failed to mine transaction");
         }
     }
         
@@ -168,29 +197,38 @@ pub async fn check_price_discrepancy(
     provider: Arc<Provider<Ws>>,
     token_in: H160,
     token_out: H160,
-    amount_in: U256
+    amount_in: U256,
 ) -> Result<Option<(bool, U256)>> {
-    let fee_uniswap = U256::from(997); // 0.3% fee
-    let fee_sushiswap = U256::from(998); // 0.25% fee
+    // Fees: 0.3% for Uniswap (997/1000), 0.25% for Sushiswap (998/1000)
+    let fee_uniswap = U256::from(997);
+    let fee_sushiswap = U256::from(998);
 
+    // Simulate reserves on Uniswap and Sushiswap
     let (uni_reserve_in, uni_reserve_out) =
         simulate_transaction(provider.clone(), false, token_in, token_out).await?;
     let (sushi_reserve_in, sushi_reserve_out) =
         simulate_transaction(provider.clone(), true, token_in, token_out).await?;
 
-    let uni_price = simulate_trade_profit(uni_reserve_in, uni_reserve_out, amount_in, fee_uniswap)?;
-    let sushi_price = simulate_trade_profit(sushi_reserve_in, sushi_reserve_out, amount_in, fee_sushiswap)?;
+    // Simulate trade output on Uniswap and Sushiswap
+    let uni_output = simulate_trade_profit(uni_reserve_in, uni_reserve_out, amount_in, fee_uniswap)?;
+    let sushi_output = simulate_trade_profit(sushi_reserve_in, sushi_reserve_out, amount_in, fee_sushiswap)?;
 
-    let (use_sushiswap, profit) = if sushi_price > uni_price {
-        (true, sushi_price - uni_price)
-    } else if uni_price > sushi_price {
-        (false, uni_price - sushi_price)
+    // Determine which DEX is cheaper to buy from and which is more expensive to sell on
+    let (buy_on_sushiswap, profit) = if sushi_output > uni_output {
+        // Sushiswap is cheaper to buy from, Uniswap is more expensive to sell on
+        (true, sushi_output - uni_output)
+    } else if uni_output > sushi_output {
+        // Uniswap is cheaper to buy from, Sushiswap is more expensive to sell on
+        (false, uni_output - sushi_output)
     } else {
+        // No price discrepancy
         return Ok(None);
     };
 
-    if profit > U256::exp10(15) {
-        Ok(Some((use_sushiswap, profit)))
+    // Check if the profit exceeds the threshold (1e15 wei = 0.001 ETH)
+    let profit_threshold  = U256::exp10(15);
+    if profit > profit_threshold {
+        Ok(Some((buy_on_sushiswap, profit)))
     } else {
         Ok(None)
     }

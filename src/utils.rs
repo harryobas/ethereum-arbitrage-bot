@@ -25,19 +25,44 @@ pub async fn get_pool_address(
     token_in: H160,
     token_out: H160,
 ) -> Result<H160> {
+    // Create a contract instance for the factory
     let factory = Contract::new(factory_address, FACTORY_ABI.clone(), provider.clone());
-    let pair_address = factory
-        .method("getPair", (token_in, token_out))?
+
+    // Ensure tokens are in canonical order (lower address first)
+    let (token0, token1) = if token_in < token_out {
+        (token_in, token_out)
+    } else {
+        (token_out, token_in)
+    };
+
+    // Call the `getPair` method to get the pool address
+    let pair_address: H160 = factory
+        .method("getPair", (token0, token1))?
         .call()
         .await
-        .map_err(|e| anyhow!("Failed to query pair address: {}", e))?;
+        .map_err(|e| {
+            anyhow!(
+                "Failed to query pair address for tokens {} and {} from factory {}: {}",
+                token0,
+                token1,
+                factory_address,
+                e
+            )
+        })?;
 
+    // Check if the pool exists
     if pair_address == H160::zero() {
-        return Err(anyhow!("No pair found for tokens {} and {}", token_in, token_out));
+        return Err(anyhow!(
+            "No pool found for tokens {} and {} on factory {}",
+            token0,
+            token1,
+            factory_address
+        ));
     }
 
     Ok(pair_address)
 }
+
 
 pub async fn get_gas_estimate(tx: &TypedTransaction, provider: Arc<Provider<Ws>>) -> Result<U256> {
     provider
