@@ -5,15 +5,11 @@ use ethers::{
         transaction::eip2718::TypedTransaction,
          H160, 
          U256
-        }, contract::{abigen, Contract}, providers::{Middleware, Provider, Ws}
+        }, contract::Contract, providers::{Middleware, Provider, Ws}
 };
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
 use lazy_static::lazy_static;
-
-
-abigen!(IERC20, "./IERC20.json");
-
 
 lazy_static! {
     pub static ref UNISWAP_V2_ROUTER_ABI: Abi = serde_json::from_str(include_str!("../UniswapV2RouterABI.json")).unwrap();
@@ -48,16 +44,6 @@ pub async fn get_gas_estimate(tx: &TypedTransaction, provider: Arc<Provider<Ws>>
         .estimate_gas(tx, None)
         .await
         .map_err(|e| anyhow!("Failed to get gas estimate: {:?}", e))
-}
-
-pub async fn check_contract_balance(
-    provider: Arc<Provider<Ws>>,
-    contract_address: H160,
-    token_address: H160,
-) -> Result<U256> {
-    let token = IERC20::new(token_address, provider.clone());
-    let balance = token.balance_of(contract_address).call().await?;
-    Ok(balance)
 }
 
 pub async fn is_target_pair(tx: &Transaction, target_token_in: H160, target_token_out: H160) -> bool {
