@@ -13,10 +13,10 @@ use ethers::{
 };
 
 use std::sync::Arc;
+use std::env;
 
 use constants::{CONTRACT_ADDRESS, DAI_ADDRESS, QUICKNODE_WS_URL, WETH_ADDRESS};
 use arbitrage_services::{load_contract_abi, monitor_mempool};
-use clap::Parser;
 
 
 #[tokio::main]
@@ -37,7 +37,8 @@ async fn main() {
         provider.clone()
     ));
 
-    let wallet = Arc::new(cli.private_key.parse::<LocalWallet>().expect("Invalid private key"));
+    let private_key = env::var("PRIVATE_KEY").expect("missing private key");
+    let wallet = Arc::new(private_key.parse::<LocalWallet>().expect("Invalid private key"));
 
     let target_token_in = DAI_ADDRESS.parse::<H160>().expect("Faild to parse token address");
     let target_token_out = WETH_ADDRESS.parse::<H160>().expect("Faild to parse token address");
