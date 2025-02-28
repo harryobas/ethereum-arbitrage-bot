@@ -15,7 +15,7 @@ lazy_static! {
     pub static ref UNISWAP_V2_ROUTER_ABI: Abi = serde_json::from_str(include_str!("../UniswapV2RouterABI.json")).unwrap();
     pub static ref POOL_ABI: Abi = serde_json::from_str(include_str!("../UniswapV2PairABI.json")).unwrap();
     pub static ref FACTORY_ABI: Abi = serde_json::from_str(include_str!("../UniswapV2FactoryABI.json")).unwrap();
-    pub static ref CONTRACT_ABI: Abi = serde_json::from_str(include_str!("SniperBotABI.json")).unwrap();
+    pub static ref CONTRACT_ABI: Abi = serde_json::from_str(include_str!("../ContractABI.json")).unwrap();
 }
 
 
