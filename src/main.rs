@@ -14,6 +14,7 @@ use ethers::{
 
 use std::sync::Arc;
 use std::env;
+use dotenv::dotenv;
 
 use constants::{CONTRACT_ADDRESS, DAI_ADDRESS, QUICKNODE_WS_URL, WETH_ADDRESS};
 use arbitrage_services::{load_contract_abi, monitor_mempool};
@@ -21,6 +22,8 @@ use arbitrage_services::{load_contract_abi, monitor_mempool};
 
 #[tokio::main]
 async fn main() {
+    
+    dotenv().ok();
 
     let provider = Provider::<Ws>::connect(QUICKNODE_WS_URL)
         .await
@@ -35,10 +38,13 @@ async fn main() {
         contract_address, 
         contract_abi, 
         provider.clone()
-    ));
+    )
+);
 
     let private_key = env::var("PRIVATE_KEY").expect("missing private key");
-    let wallet = Arc::new(private_key.parse::<LocalWallet>().expect("Invalid private key"));
+    let wallet = Arc::new(
+        private_key.parse::<LocalWallet>().expect("Invalid private key")
+    );
 
     let target_token_in = DAI_ADDRESS.parse::<H160>().expect("Faild to parse token address");
     let target_token_out = WETH_ADDRESS.parse::<H160>().expect("Faild to parse token address");
