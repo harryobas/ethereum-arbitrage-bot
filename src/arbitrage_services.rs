@@ -24,9 +24,7 @@ pub fn load_contract_abi() -> Result<Abi> {
     Ok(CONTRACT_ABI.clone())
 }
 
-pub fn load_router_abi() -> Result<Abi> {
-    Ok(UNISWAP_V2_ROUTER_ABI.clone())
-}
+
 
 pub async fn simulate_transaction(
     provider: Arc<Provider<Ws>>,

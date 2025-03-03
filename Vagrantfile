@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "base"
+  config.vm.box = "ubuntu/focal64"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -43,19 +43,19 @@ Vagrant.configure("2") do |config|
   # the path on the host to the actual folder. The second argument is
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
-  # config.vm.synced_folder "../data", "/vagrant_data"
+   config.vm.synced_folder "./", "/home/vagrant/app"
 
   # Provider-specific configuration so you can fine-tune various
   # backing providers for Vagrant. These expose provider-specific options.
   # Example for VirtualBox:
   #
-  # config.vm.provider "virtualbox" do |vb|
+   config.vm.provider "virtualbox" do |vb|
   #   # Display the VirtualBox GUI when booting the machine
-  #   vb.gui = true
+  # vb.gui = true
   #
   #   # Customize the amount of memory on the VM:
-  #   vb.memory = "1024"
-  # end
+    vb.memory = "1024"
+   end
   #
   # View the documentation for the provider you are using for more
   # information on available options.
@@ -63,8 +63,29 @@ Vagrant.configure("2") do |config|
   # Enable provisioning with a shell script. Additional provisioners such as
   # Ansible, Chef, Docker, Puppet and Salt are also available. Please see the
   # documentation for more information about their specific syntax and use.
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   apt-get update
-  #   apt-get install -y apache2
-  # SHELL
+   config.vm.provision "shell", inline: <<-SHELL
+   
+    # Update system and install required dependencies
+    sudo apt-get update -y
+    sudo apt-get install -y curl build-essential
+
+    # Install Rust via rustup
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+    # Add Rust to PATH for all sessions
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+    echo 'source $HOME/.cargo/env' >> ~/.bashrc
+    source $HOME/.cargo/env
+
+    # Navigate to the Rust project directory
+    cd /home/vagrant/app
+
+    # Build the Rust project in release mode
+    cargo build --release
+
+    # Display build result
+    ls -lah target/release
+    mv target/release/arbitrage-bot /usr/bin/arbitrage-bot
+  SHELL
+
 end
