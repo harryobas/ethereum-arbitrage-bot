@@ -1,1 +1,1 @@
-# ethereum-arbitrage-trader
+# ethereum-arbitrage-bot
