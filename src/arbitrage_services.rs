@@ -3,7 +3,7 @@ use ethers::{
     contract:: Contract,
     providers::{Middleware, Provider, Ws},
     signers::{LocalWallet, Signer},
-    types::{H160, U256},
+    types::{transaction::eip2718::TypedTransaction, BlockNumber, Eip1559TransactionRequest, H160, U256, U64},
 };
 use std::sync::Arc;
 use chrono::Utc;
@@ -105,22 +105,56 @@ async fn execute_arbitrage(
     direction: TradeDirections,
 ) -> Result<()> {
     let method_name = "startArbitrage";
-    let gas_price = provider.get_gas_price().await?;
+    //let gas_price = provider.get_gas_price().await?;
     let deadline = U256::from(Utc::now().timestamp() + 300);
+
+    let block = provider
+        .get_block(BlockNumber::Latest)
+        .await?
+        .ok_or(anyhow!("Failed to fetch latest block"))?;
+    let base_fee = block.base_fee_per_gas.ok_or(anyhow!("Base fee not available"))?;
+
+    let max_priority_per_gas = base_fee
+        .checked_div(U256::from(10))
+        .unwrap_or(U256::from(2_000_000_000));
+
+    let max_fee_per_gas = base_fee + max_priority_per_gas;
+
+    let method = contract.method::<_, ()>(
+        method_name,
+        (token_in, amount_in, token_out, deadline, matches!(direction, TradeDirections::UNISWAP)),
+    )?;
+
+    let calldata = method.calldata().ok_or(anyhow!("Calldata not available"))?;
+
+    let chain_id_u256: U256 = provider.get_chainid().await?;
+    let chain_id_u64: U64 = if chain_id_u256 > U256::from(u64::MAX) {
+        return Err(anyhow!("Chain ID is too large for U64"));
+    } else {
+        U64::from(chain_id_u256.as_u64())
+    };
+
+    let tx = Eip1559TransactionRequest {
+        to: Some(contract.address().into()),
+        data: Some(calldata),
+        gas: None,
+        max_fee_per_gas: Some(max_fee_per_gas),
+        max_priority_fee_per_gas: Some(max_priority_per_gas),
+        value: None,
+        nonce: None,
+        chain_id: Some(chain_id_u64),
+        ..Default::default()
+    };
     
-    let mut tx = contract
-        .method::<_, ()>(
-            method_name,
-            (token_in, amount_in, token_out, deadline, matches!(direction, TradeDirections::UNISWAP)),
-        )?
-        .gas_price(gas_price)
-        .from(wallet.address())
-        .tx;
+    let typed_tx = TypedTransaction::Eip1559(tx.clone());
+    let gas_estimate = provider.estimate_gas(&typed_tx, None).await?;
 
-    let gas_estimate = get_gas_estimate(&tx, provider.clone()).await?;
-    let tx = tx.set_gas(gas_estimate);
+    let tx = Eip1559TransactionRequest {
+        gas: Some(gas_estimate),
+        ..tx
+    };
 
-    let signed_tx = wallet.sign_transaction(tx).await?;
+    let signed_tx = wallet.sign_transaction(&TypedTransaction::Eip1559(tx.clone())).await?;
     let raw_tx = tx.rlp_signed(&signed_tx);
 
     let pending_tx = provider
@@ -132,7 +166,11 @@ async fn execute_arbitrage(
     match receipt {
         Some(receipt) => {
             info!("✅  Transaction mined: {:?}", receipt.transaction_hash);
+            info!("Gas used {}", receipt.gas_used.unwrap_or_default()); 
+            info!("Max fee per gas {}", tx.max_fee_per_gas.unwrap_or_default());
+            info!("Max priority fee per gas {}", tx.max_priority_fee_per_gas.unwrap_or_default());   
         }
+
         None => {
             error!("❌ Failed to mine transaction");
         }

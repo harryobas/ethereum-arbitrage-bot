@@ -2,10 +2,9 @@ use ethers::{
     abi::Abi,
     types::{
         Transaction,
-        transaction::eip2718::TypedTransaction,
          H160, 
          U256
-        }, contract::Contract, providers::{Middleware, Provider, Ws}
+        }, contract::Contract, providers::{ Provider, Ws}
 };
 use anyhow::{Result, anyhow};
 use std::sync::Arc;
@@ -63,13 +62,6 @@ pub async fn get_pool_address(
     Ok(pair_address)
 }
 
-
-pub async fn get_gas_estimate(tx: &TypedTransaction, provider: Arc<Provider<Ws>>) -> Result<U256> {
-    provider
-        .estimate_gas(tx, None)
-        .await
-        .map_err(|e| anyhow!("Failed to get gas estimate: {:?}", e))
-}
 
 pub async fn is_target_pair(tx: &Transaction, target_token_in: H160, target_token_out: H160) -> bool {
     let decoded_tx = decode_transaction(tx).await;
