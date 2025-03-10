@@ -19,12 +19,9 @@ pub enum TradeDirections {
     SUSHISWAP,
 }
 
-
 pub fn load_contract_abi() -> Result<Abi> {
     Ok(CONTRACT_ABI.clone())
 }
-
-
 
 pub async fn simulate_transaction(
     provider: Arc<Provider<Ws>>,
@@ -94,7 +91,6 @@ pub fn simulate_trade_profit(
     Ok(amount_out)
 }
 
-
 async fn execute_arbitrage(
     provider: Arc<Provider<Ws>>,
     contract: Arc<Contract<Provider<Ws>>>,
@@ -105,7 +101,6 @@ async fn execute_arbitrage(
     direction: TradeDirections,
 ) -> Result<()> {
     let method_name = "startArbitrage";
-    //let gas_price = provider.get_gas_price().await?;
     let deadline = U256::from(Utc::now().timestamp() + 300);
 
     let block = provider
@@ -168,7 +163,8 @@ async fn execute_arbitrage(
             info!("✅  Transaction mined: {:?}", receipt.transaction_hash);
             info!("Gas used {}", receipt.gas_used.unwrap_or_default()); 
             info!("Max fee per gas {}", tx.max_fee_per_gas.unwrap_or_default());
-            info!("Max priority fee per gas {}", tx.max_priority_fee_per_gas.unwrap_or_default());   
+            info!("Max priority fee per gas {}", tx.max_priority_fee_per_gas.unwrap_or_default()); 
+            info!("Chain ID {}", tx.chain_id.unwrap_or_default());
         }
 
         None => {
@@ -179,7 +175,6 @@ async fn execute_arbitrage(
 
     Ok(())
 }
-
 
 pub async fn monitor_mempool(
     provider: Arc<Provider<Ws>>,
@@ -227,7 +222,6 @@ pub async fn monitor_mempool(
         });
     }
 }
-
 
 pub async fn check_price_discrepancy(
     provider: Arc<Provider<Ws>>,

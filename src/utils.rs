@@ -17,7 +17,6 @@ lazy_static! {
     pub static ref CONTRACT_ABI: Abi = serde_json::from_str(include_str!("../ContractABI.json")).unwrap();
 }
 
-
 pub async fn get_pool_address(
     provider: Arc<Provider<Ws>>,
     factory_address: H160,
@@ -61,7 +60,6 @@ pub async fn get_pool_address(
 
     Ok(pair_address)
 }
-
 
 pub async fn is_target_pair(tx: &Transaction, target_token_in: H160, target_token_out: H160) -> bool {
     let decoded_tx = decode_transaction(tx).await;
